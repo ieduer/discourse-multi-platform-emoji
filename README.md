@@ -1,111 +1,129 @@
 # discourse-multi-platform-emoji
 
-Multi-platform emoji for Discourse Reactions. Upload emoji from Twemoji, Noto, Fluent, OpenMoji (and optionally Apple) as custom emoji, then use this theme component to organize them by platform in the emoji picker.
+Serve all emoji platforms via Cloudflare R2 + Discourse External emoji URL. Includes a theme component for platform filter tabs in the emoji picker.
 
 ## Architecture
 
-This project has two parts:
+Two approaches (can be combined):
 
-1. **Scripts** — Fetch emoji images from upstream sources, build a unified index, and bulk-upload to Discourse as custom emoji via the Admin API.
-2. **Theme Component** — Adds platform filter tabs to the Discourse emoji picker so users can browse custom emoji by platform (Twemoji, Noto, Fluent, OpenMoji, etc.).
+### Approach A: External emoji URL + R2 (recommended)
 
-Custom emoji are uploaded with platform prefixes (e.g., `twemoji_grinning`, `noto_heart`) and grouped by platform. The theme component reads these prefixes to create filterable tabs.
+Upload all emoji sets (Twemoji, Noto, OpenMoji, Fluent, Apple) to an R2 bucket in Discourse's expected directory structure. Set `External emoji URL` in Discourse admin to point to R2. Users switch emoji sets via the admin "Emoji set" dropdown — all sets load from R2.
 
-## Quick Start
+### Approach B: Custom Emoji Upload via API
 
-### Step 1: Fetch emoji images
+Bulk-upload emoji as Discourse custom emoji with platform prefixes. Use the theme component to add platform filter tabs. Both approaches can coexist.
+
+## Quick Start (Approach A — R2)
+
+### Step 1: Build the emoji directory tree
 
 ```bash
 cd scripts
 pip install -r requirements.txt
 
-# Fetch open-source emoji sets
-bash fetch_emoji_sets.sh twemoji,noto,fluent,openmoji 72 ./build
+# Build all open-source sets (downloads from upstream, maps to Discourse names)
+python3 build_r2_emoji_tree.py \
+  --output ./r2_tree \
+  --platforms twemoji,noto,openmoji,fluentui
 
-# Build the unified index mapping Discourse names → platform files
-python3 build_emoji_index.py --build-dir ./build --output ./build/emoji_manifest.json
+# Optional: include Apple emoji (macOS only, private use)
+python3 build_r2_emoji_tree.py \
+  --output ./r2_tree \
+  --platforms apple \
+  --apple-font "/System/Library/Fonts/Apple Color Emoji.ttc"
 ```
 
-### Step 2: Upload to Discourse
+This creates:
+```
+r2_tree/
+├── twemoji/grinning.png, heart.png, ...
+├── noto/grinning.png, heart.png, ...
+├── openmoji/grinning.png, heart.png, ...
+├── fluentui/grinning.png, heart.png, ...
+├── apple/grinning.png, ...           (if built)
+├── twitter/  → copy of twemoji/      (alias)
+├── google/   → copy of noto/         (alias)
+└── google_classic/ → copy of noto/   (alias)
+```
+
+### Step 2: Upload to R2
 
 ```bash
-# Dry run first
-python3 bulk_upload.py \
-  --manifest ./build/emoji_manifest.json \
-  --build-dir ./build \
-  --discourse-url https://forum.example.com \
-  --api-key YOUR_API_KEY \
-  --platforms twemoji,noto \
-  --dry-run
+# Dry run
+bash upload_to_r2.sh ./r2_tree discourse-emoji-assets --dry-run
 
-# Real upload (start with one platform)
+# Real upload
+bash upload_to_r2.sh ./r2_tree discourse-emoji-assets
+```
+
+### Step 3: Configure Discourse
+
+1. Set up R2 bucket public access (custom domain or R2.dev)
+2. In Discourse Admin → Settings → Emoji:
+   - Set **External emoji URL** to your R2 public URL (e.g., `https://emoji.rdfzer.com`)
+   - Select any **Emoji set** from the dropdown — all sets now load from R2
+
+### Step 4: Install Theme Component (optional)
+
+For platform filter tabs in the emoji picker:
+
+1. Go to **Admin → Customize → Themes → Components**
+2. Click **Install** → **From a git repository**
+3. Enter: `https://github.com/ieduer/discourse-multi-platform-emoji`
+4. Add the component to your active theme
+
+## Quick Start (Approach B — Custom Emoji API)
+
+```bash
+cd scripts
+
+# Fetch emoji
+bash fetch_emoji_sets.sh twemoji,noto 72 ./build
+
+# Build manifest
+python3 build_emoji_index.py --build-dir ./build
+
+# Dry run
 python3 bulk_upload.py \
   --manifest ./build/emoji_manifest.json \
   --build-dir ./build \
   --discourse-url https://forum.example.com \
   --api-key YOUR_API_KEY \
   --platforms twemoji \
-  --batch-size 20 \
-  --batch-delay 2
-```
+  --dry-run
 
-### Step 3: Install Theme Component
-
-In Discourse Admin:
-
-1. Go to **Admin → Customize → Themes → Components**
-2. Click **Install** → **From a git repository**
-3. Enter: `https://github.com/suen-org/discourse-multi-platform-emoji`
-4. Add the component to your active theme
-
-## Optional: Apple Emoji (macOS only, private use)
-
-```bash
-# Must run on macOS — extracts from system font
-python3 extract_apple_emoji.py --output ./build/apple --size 64
-
-# Re-build index to include Apple
-python3 build_emoji_index.py --build-dir ./build --output ./build/emoji_manifest.json
-
-# Upload Apple emoji
+# Upload
 python3 bulk_upload.py \
   --manifest ./build/emoji_manifest.json \
+  --build-dir ./build \
   --discourse-url https://forum.example.com \
   --api-key YOUR_API_KEY \
-  --platforms apple
+  --platforms twemoji
 ```
-
-> **Warning:** Apple emoji are copyrighted. Do not publicly distribute. Private forum use only.
 
 ## Available Platforms
 
-| Platform | License | Source |
-|----------|---------|--------|
-| Twemoji | CC-BY 4.0 | [twitter/twemoji](https://github.com/twitter/twemoji) |
-| Noto Emoji | OFL-1.1 | [googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) |
-| Fluent Emoji | MIT | [microsoft/fluentui-emoji](https://github.com/microsoft/fluentui-emoji) |
-| OpenMoji | CC BY-SA 4.0 | [hfg-gmuend/openmoji](https://github.com/hfg-gmuend/openmoji) |
-| Apple | Proprietary | macOS system font (private use only) |
+| Platform | Discourse set name | License | Source |
+|----------|-------------------|---------|--------|
+| Twemoji | `twemoji` | CC-BY 4.0 | [twitter/twemoji](https://github.com/twitter/twemoji) |
+| Noto Emoji | `noto` | OFL-1.1 | [googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) |
+| Fluent Emoji | `fluentui` | MIT | [microsoft/fluentui-emoji](https://github.com/microsoft/fluentui-emoji) |
+| OpenMoji | `openmoji` | CC BY-SA 4.0 | [hfg-gmuend/openmoji](https://github.com/hfg-gmuend/openmoji) |
+| Apple | `apple` | Proprietary | macOS system font (private use only) |
+
+Aliases: `twitter` → `twemoji`, `google` → `noto`, `google_classic` → `noto`
+
+> **Warning:** Apple emoji are copyrighted. Do not publicly distribute. Use only on private forums with R2 CORS restricted to your domain.
 
 ## Theme Component Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `multi_platform_emoji_enabled` | true | Enable platform filter tabs |
-| `emoji_platforms_enabled` | twemoji\|noto\|fluent\|openmoji | Pipe-separated list of enabled platforms |
-| `show_platform_prefix` | false | Show platform name in emoji tooltip |
+| `emoji_platforms_enabled` | twemoji\|noto\|fluent\|openmoji | Pipe-separated enabled platforms |
+| `show_platform_prefix` | false | Show platform name in tooltip |
 | `platform_tab_style` | icons | Tab style: icons, text, or both |
-
-## R2 / CDN (Optional)
-
-If you prefer hosting emoji on Cloudflare R2 instead of Discourse uploads:
-
-1. Upload emoji images to R2 bucket `discourse-emoji-assets`
-2. Set up a custom domain (e.g., `emoji-cdn.rdfzer.com`)
-3. Configure CORS to allow only your forum domain
-4. Use `External emoji URL` in Discourse settings to point to the R2 bucket
-
-This is an alternative approach for the default emoji set rendering; the custom emoji upload approach doesn't require this.
 
 ## License
 
