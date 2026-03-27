@@ -18,10 +18,13 @@ const PLATFORM_META = {
   unicode:           { label: "Unicode" },
 };
 
-// Extracts the bare filename (e.g. "grinning.png") from any emoji URL.
+// Extracts bare filename ("grinning.png") from any emoji URL.
 const EMOJI_FILENAME_RE = /\/([^/?#]+\.(?:png|gif|svg))(?:[?#].*)?$/i;
 
-// All selectors we've ever seen for Discourse's emoji picker across versions.
+// Matches emoji images from Discourse or R2.
+const EMOJI_IMG_SEL = "img.emoji, img[src*='/emoji/'], img[src*='emoji.rdfzer.com']";
+
+// Known picker selectors across Discourse versions.
 const PICKER_SELECTORS = [
   ".emoji-picker",
   ".emoji-picker-modal",
@@ -42,22 +45,55 @@ export default apiInitializer("1.0", (api) => {
   if (enabledPlatforms.length === 0) return;
 
   let activePlatform = enabledPlatforms[0];
-  let imageObserver = null;
   let injectedPickers = new WeakSet();
 
   // ── URL helpers ────────────────────────────────────────────────────────
 
+  function isEmojiImg(img) {
+    return img.src && (
+      img.classList.contains("emoji") ||
+      img.src.includes("/emoji/") ||
+      img.src.includes("emoji.rdfzer.com")
+    );
+  }
+
   function rewriteImg(img) {
-    const m = img.src && img.src.match(EMOJI_FILENAME_RE);
+    if (!isEmojiImg(img)) return;
+    const m = img.src.match(EMOJI_FILENAME_RE);
     if (!m) return;
     const target = `${R2_BASE}/${activePlatform}/${m[1]}`;
     if (img.src !== target) img.src = target;
   }
 
   function rewriteAll(root) {
-    root.querySelectorAll("img.emoji, img[src*='/emoji/'], img[src*='emoji.rdfzer.com']")
-        .forEach(rewriteImg);
+    (root || document.body).querySelectorAll(EMOJI_IMG_SEL).forEach(rewriteImg);
   }
+
+  // ── Global image observer (works regardless of picker detection) ────────
+  // Rewrites every emoji image the moment it appears or its src is changed.
+
+  new MutationObserver((mutations) => {
+    for (const { type, addedNodes, target, attributeName } of mutations) {
+      if (type === "childList") {
+        for (const node of addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (node.tagName === "IMG") {
+            rewriteImg(node);
+          } else {
+            node.querySelectorAll?.("img").forEach(rewriteImg);
+          }
+          // Also attempt picker tab injection on newly added nodes.
+          tryInitPicker(node);
+        }
+      }
+      if (type === "attributes" && attributeName === "src" && target.tagName === "IMG") {
+        rewriteImg(target);
+      }
+    }
+  }).observe(document.body, {
+    childList: true, subtree: true,
+    attributes: true, attributeFilter: ["src"],
+  });
 
   // ── Tab UI ─────────────────────────────────────────────────────────────
 
@@ -87,110 +123,99 @@ export default apiInitializer("1.0", (api) => {
       tabsEl.appendChild(btn);
     });
 
-    // Try known anchor points, fall back to prepend
+    // Insert before first recognizable sub-element, or prepend.
     const anchor = picker.querySelector(
       ".emoji-picker-category-buttons, .emoji-categories, " +
       ".emoji-picker-search, .d-emoji-picker__search, " +
       ".emoji-picker__search, [class*='category-buttons'], " +
-      "[class*='emoji-search'], .emoji-picker-header, " +
-      ".emoji-picker-body"
+      "[class*='emoji-search'], [class*='search'], " +
+      ".emoji-picker-header, .emoji-picker__header, " +
+      ".emoji-picker-body, .emoji-picker__body"
     );
     if (anchor) {
       anchor.parentNode.insertBefore(tabsEl, anchor);
+    } else if (picker.firstElementChild) {
+      picker.insertBefore(tabsEl, picker.firstElementChild);
     } else {
-      picker.prepend(tabsEl);
+      picker.appendChild(tabsEl);
     }
 
     rewriteAll(picker);
-    watchImages(picker);
   }
 
-  function watchImages(picker) {
-    if (imageObserver) imageObserver.disconnect();
-    imageObserver = new MutationObserver((mutations) => {
-      for (const { type, addedNodes, target, attributeName } of mutations) {
-        if (type === "childList") {
-          for (const node of addedNodes) {
-            if (node.nodeType !== 1) continue;
-            if (node.tagName === "IMG") {
-              rewriteImg(node);
-            } else {
-              node.querySelectorAll?.("img").forEach(rewriteImg);
-            }
-          }
-        }
-        if (type === "attributes" && attributeName === "src" && target.tagName === "IMG") {
-          rewriteImg(target);
-        }
-      }
-    });
-    imageObserver.observe(picker, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
-  }
+  // ── Picker detection ────────────────────────────────────────────────────
 
-  // ── Picker detection: multiple strategies ──────────────────────────────
+  // Finds a picker by scanning floating panels that contain emoji images.
+  // This works even when class names are unknown.
+  function findPickerByContent() {
+    const candidates = document.querySelectorAll(
+      [PICKER_SELECTORS,
+       "[class*='menu-panel']", "[class*='d-menu']", "[class*='popup']",
+       "[class*='modal']", "[class*='float']", "[class*='popover']",
+       "[class*='panel']", "[class*='tooltip-content']",
+      ].join(", ")
+    );
+    for (const el of candidates) {
+      const imgs = el.querySelectorAll(EMOJI_IMG_SEL);
+      if (imgs.length >= 3) return el;
+    }
+    return null;
+  }
 
   function tryInitPicker(el) {
-    // Direct match
-    if (el.matches?.(PICKER_SELECTORS)) {
-      later(() => buildTabs(el), 120);
-      return true;
-    }
-    // Child match
-    const picker = el.querySelector?.(PICKER_SELECTORS);
-    if (picker) {
-      later(() => buildTabs(picker), 120);
-      return true;
-    }
-    // Heuristic: new element contains emoji images → treat nearest scrollable as picker
-    const imgs = el.querySelectorAll?.("img.emoji, img[src*='/emoji/']") || [];
+    if (!el || el.nodeType !== 1) return false;
+    // Direct class match
+    try {
+      if (el.matches(PICKER_SELECTORS)) {
+        later(() => buildTabs(el), 150);
+        return true;
+      }
+      const child = el.querySelector(PICKER_SELECTORS);
+      if (child) {
+        later(() => buildTabs(child), 150);
+        return true;
+      }
+    } catch (_) {}
+    // Content heuristic: 3+ emoji images → treat as picker
+    const imgs = el.querySelectorAll?.(EMOJI_IMG_SEL) || [];
     if (imgs.length >= 3) {
-      later(() => buildTabs(el), 120);
+      later(() => buildTabs(el), 150);
       return true;
     }
     return false;
   }
 
-  // Strategy 1: MutationObserver on document.body
-  new MutationObserver((mutations) => {
-    for (const { addedNodes } of mutations) {
-      for (const node of addedNodes) {
-        if (node.nodeType !== 1) continue;
-        if (tryInitPicker(node)) break;
-      }
-    }
-  }).observe(document.body, { childList: true, subtree: true });
-
-  // Strategy 2: Hook into emoji button clicks
+  // Strategy: poll after any emoji button click (covers Glimmer pickers).
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(
       ".emoji-picker-anchor, .emoji-picker-button, " +
       "[data-id='emoji'], button.emoji, .insert-emoji, " +
-      ".btn-emoji, [title*='moji'], [aria-label*='moji']"
+      ".btn-emoji, [title*='moji'], [aria-label*='moji'], " +
+      "[title*='Emoji'], [aria-label*='Emoji']"
     );
     if (!btn) return;
-    // Picker opens asynchronously — poll briefly
     let attempts = 0;
     const poll = setInterval(() => {
-      const picker = document.querySelector(PICKER_SELECTORS);
+      // First try known selectors, then content-based search.
+      let picker = document.querySelector(PICKER_SELECTORS);
+      if (!picker) picker = findPickerByContent();
       if (picker && !injectedPickers.has(picker)) {
         buildTabs(picker);
         clearInterval(poll);
       }
-      if (++attempts > 20) clearInterval(poll);
+      if (++attempts > 30) clearInterval(poll);
     }, 80);
   }, true);
 
-  // Strategy 3: Discourse plugin API - modifyClass (classic component support)
+  // Classic Ember component hook (no-op on Glimmer-only forks).
   try {
     api.modifyClass("component:emoji-picker", {
       pluginId: "multi-platform-emoji",
       didInsertElement() {
         this._super?.(...arguments);
-        if (this.element) later(() => buildTabs(this.element), 120);
+        if (this.element) later(() => buildTabs(this.element), 150);
       },
     });
-  } catch (_) {
-    // Glimmer-only versions don't have this classic component — ignore
-  }
+  } catch (_) {}
 
 });
