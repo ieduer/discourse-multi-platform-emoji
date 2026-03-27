@@ -1,9 +1,10 @@
 import { apiInitializer } from "discourse/lib/api";
 
-const PLATFORM_PREFIXES = ["twemoji", "noto", "fluent", "openmoji"];
+const PLATFORM_PREFIXES = ["apple", "twemoji", "noto", "fluent", "openmoji"];
 
 const PLATFORM_ICONS = {
   all: "globe",
+  apple: "apple",
   twemoji: "twitter",
   noto: "google",
   fluent: "microsoft",

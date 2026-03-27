@@ -6,9 +6,9 @@ multi_platform_emoji_enabled:
 
 emoji_platforms_enabled:
   type: list
-  default: "twemoji|noto|fluent|openmoji"
+  default: "apple|twemoji|noto|fluent|openmoji"
   description:
-    en: "Enabled emoji platforms (pipe-separated). Available: twemoji, noto, fluent, openmoji"
+    en: "Enabled emoji platforms (pipe-separated). Available: apple, twemoji, noto, fluent, openmoji"
 
 show_platform_prefix:
   type: bool
