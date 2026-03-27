@@ -80,7 +80,7 @@ def extract_sbix_emoji(font_path: str, output_dir: str, target_size: int = 64):
             glyph_to_unicode[glyph_name] = hex_cp
 
         # Find the best strike size (closest to target)
-        strikes = sbix.table.strikes
+        strikes = sbix.strikes
         best_strike = None
         best_diff = float("inf")
 

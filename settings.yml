@@ -6,9 +6,9 @@ multi_platform_emoji_enabled:
 
 emoji_platforms_enabled:
   type: list
-  default: "apple|twemoji|noto|fluent|openmoji"
+  default: "apple|google|twitter|win10|facebook_messenger|emoji_one|google_classic"
   description:
-    en: "Enabled emoji platforms (pipe-separated). Available: apple, twemoji, noto, fluent, openmoji"
+    en: "Enabled emoji platforms (pipe-separated). Must match R2 folder names: apple, google, twitter, win10, facebook_messenger, emoji_one, google_classic"
 
 show_platform_prefix:
   type: bool

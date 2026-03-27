@@ -409,7 +409,7 @@ def build_apple(mapping: dict, output_dir: Path, tmp_dir: Path, font_path: str):
         # Find best strike (closest to 72px)
         best_strike = None
         best_diff = float("inf")
-        for strike in sbix.table.strikes.values():
+        for strike in sbix.strikes.values():
             diff = abs(strike.ppem - 72)
             if diff < best_diff:
                 best_diff = diff
@@ -424,7 +424,9 @@ def build_apple(mapping: dict, output_dir: Path, tmp_dir: Path, font_path: str):
         for glyph_name, glyph in best_strike.glyphs.items():
             if not glyph.graphicType or not glyph.imageData:
                 continue
-            if glyph.graphicType not in (b"png ", b"PNG "):
+            # graphicType may be str or bytes depending on fonttools version
+            gt = glyph.graphicType if isinstance(glyph.graphicType, str) else glyph.graphicType.decode()
+            if gt.strip().lower() != "png":
                 continue
 
             if glyph_name in glyph_to_cp:
