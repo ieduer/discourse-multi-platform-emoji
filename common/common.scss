@@ -1,0 +1,65 @@
+// Multi-Platform Emoji Tabs for Discourse Emoji Picker
+// =====================================================
+
+.platform-emoji-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--primary-low);
+  background: var(--secondary);
+  flex-wrap: wrap;
+  align-items: center;
+
+  .platform-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary-medium);
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--primary-very-low);
+      color: var(--primary);
+    }
+
+    &.active {
+      background: var(--tertiary-low);
+      color: var(--tertiary);
+      font-weight: 600;
+    }
+
+    .platform-icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    // Platform-specific icon colors via pseudo-elements
+    .platform-icon-all::before { content: "🌐"; font-size: 14px; }
+    .platform-icon-twemoji::before { content: "🐦"; font-size: 14px; }
+    .platform-icon-noto::before { content: "🔤"; font-size: 14px; }
+    .platform-icon-fluent::before { content: "🪟"; font-size: 14px; }
+    .platform-icon-openmoji::before { content: "🎨"; font-size: 14px; }
+    .platform-icon-custom::before { content: "⭐"; font-size: 14px; }
+
+    .platform-label {
+      line-height: 1;
+    }
+  }
+}
+
+// Smooth transition for filtered emoji
+.emoji-picker-category-custom img.emoji,
+.section[data-section="custom"] img.emoji {
+  transition: opacity 0.15s ease;
+}

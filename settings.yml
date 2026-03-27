@@ -1,0 +1,27 @@
+multi_platform_emoji_enabled:
+  type: bool
+  default: true
+  description:
+    en: "Enable multi-platform emoji tabs in the emoji picker"
+
+emoji_platforms_enabled:
+  type: list
+  default: "twemoji|noto|fluent|openmoji"
+  description:
+    en: "Enabled emoji platforms (pipe-separated). Available: twemoji, noto, fluent, openmoji"
+
+show_platform_prefix:
+  type: bool
+  default: false
+  description:
+    en: "Show platform prefix in emoji tooltip (e.g. 'twemoji: grinning')"
+
+platform_tab_style:
+  type: enum
+  default: "icons"
+  choices:
+    - icons
+    - text
+    - both
+  description:
+    en: "Style for platform filter tabs: icons only, text only, or both"
