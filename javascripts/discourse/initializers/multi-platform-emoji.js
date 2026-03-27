@@ -3,18 +3,20 @@ import { apiInitializer } from "discourse/lib/api";
 const R2_BASE = "https://emoji.rdfzer.com";
 
 const PLATFORM_META = {
-  apple:             { label: "Apple",         order: 0 },
-  google:            { label: "Google",        order: 1 },
-  google_classic:    { label: "Google (old)",  order: 2 },
-  twitter:           { label: "Twitter/X",     order: 3 },
-  facebook_messenger:{ label: "Facebook",      order: 4 },
-  emoji_one:         { label: "EmojiOne",      order: 5 },
-  win10:             { label: "Windows",       order: 6 },
+  apple:             { label: "Apple" },
+  google:            { label: "Google" },
+  twitter:           { label: "Twitter/X" },
+  win10:             { label: "Windows" },
+  facebook_messenger:{ label: "Facebook" },
+  emoji_one:         { label: "EmojiOne" },
+  google_classic:    { label: "Google (old)" },
 };
 
-// Matches any URL that originates from our R2 bucket, regardless of platform subfolder.
-// Captures: (base, platform, filename)  e.g. ("https://emoji.rdfzer.com", "google", "grinning.png")
-const R2_URL_RE = /^(https:\/\/emoji\.rdfzer\.com)\/([^/]+)\/(.+)$/;
+// Extract just the emoji filename (e.g. "grinning.png") from any URL format:
+//   https://emoji.rdfzer.com/apple/grinning.png
+//   https://forum.example.com/images/emoji/apple/grinning.png?v=15
+//   /images/emoji/google/heart.png?v=12
+const EMOJI_FILENAME_RE = /\/([^/?#]+\.(?:png|gif|svg))(?:[?#].*)?$/i;
 
 export default apiInitializer("1.0", (api) => {
   const siteSettings = api.container.lookup("service:site-settings");
@@ -29,50 +31,72 @@ export default apiInitializer("1.0", (api) => {
   if (enabledPlatforms.length === 0) return;
 
   let activePlatform = enabledPlatforms[0];
-  let pickerImageObserver = null;
+  let imageObserver = null;
 
-  // ─── URL helpers ──────────────────────────────────────────────────────────
+  // ── URL helpers ──────────────────────────────────────────────────────────
 
-  function toR2Url(platform, filename) {
+  function emojiFilename(src) {
+    if (!src) return null;
+    const m = src.match(EMOJI_FILENAME_RE);
+    return m ? m[1] : null;
+  }
+
+  function r2Url(platform, filename) {
     return `${R2_BASE}/${platform}/${filename}`;
   }
 
-  function rewriteSrc(img) {
-    const m = img.src && img.src.match(R2_URL_RE);
-    if (m) {
-      const newSrc = toR2Url(activePlatform, m[3]);
-      if (img.src !== newSrc) img.src = newSrc;
-    }
+  function rewriteImg(img) {
+    const fn = emojiFilename(img.src);
+    if (!fn) return;
+    const target = r2Url(activePlatform, fn);
+    if (img.src !== target) img.src = target;
   }
 
-  // ─── Picker DOM helpers ───────────────────────────────────────────────────
+  // ── Picker helpers ───────────────────────────────────────────────────────
 
-  function getAllEmojiImgs(picker) {
-    return picker.querySelectorAll("img.emoji[src], img[src*='emoji.rdfzer.com']");
+  const PICKER_SELECTORS = [
+    ".emoji-picker",
+    ".emoji-picker-modal",
+    "[class*='emoji-picker']",
+    ".d-emoji-picker",
+  ].join(", ");
+
+  function findPicker(root) {
+    return root.matches?.(PICKER_SELECTORS)
+      ? root
+      : root.querySelector?.(PICKER_SELECTORS);
+  }
+
+  function emojiImgsIn(picker) {
+    // Include both standard emoji imgs and any img whose src suggests an emoji
+    return Array.from(
+      picker.querySelectorAll("img.emoji, img[src*='/emoji/'], img[src*='emoji.rdfzer.com']")
+    );
   }
 
   function rewriteAll(picker) {
-    getAllEmojiImgs(picker).forEach(rewriteSrc);
+    emojiImgsIn(picker).forEach(rewriteImg);
   }
 
   function buildTabs(picker) {
-    if (picker.querySelector(".platform-emoji-tabs")) return;
+    if (picker.querySelector(".platform-emoji-tabs")) return; // already injected
 
     const tabsEl = document.createElement("div");
     tabsEl.className = "platform-emoji-tabs";
 
-    enabledPlatforms.forEach((platform, i) => {
+    enabledPlatforms.forEach((platform) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "platform-tab" + (platform === activePlatform ? " active" : "");
       btn.dataset.platform = platform;
-      btn.textContent = (PLATFORM_META[platform] || {}).label || platform;
+      btn.textContent = PLATFORM_META[platform].label;
 
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         activePlatform = platform;
-        tabsEl.querySelectorAll(".platform-tab").forEach((t) => t.classList.remove("active"));
+        tabsEl.querySelectorAll(".platform-tab")
+              .forEach((t) => t.classList.remove("active"));
         btn.classList.add("active");
         rewriteAll(picker);
       });
@@ -80,49 +104,41 @@ export default apiInitializer("1.0", (api) => {
       tabsEl.appendChild(btn);
     });
 
-    // Insert before the first category section or at the top
-    const target =
-      picker.querySelector(".emoji-picker-category-buttons") ||
-      picker.querySelector(".emoji-categories") ||
-      picker.firstElementChild;
+    const anchor =
+      picker.querySelector(
+        ".emoji-picker-category-buttons, .emoji-categories, " +
+        ".picker-emoji-list, .emoji-picker__body, .emoji-picker-content"
+      ) || picker.firstElementChild;
 
-    if (target) {
-      picker.insertBefore(tabsEl, target);
-    } else {
-      picker.appendChild(tabsEl);
-    }
+    anchor ? picker.insertBefore(tabsEl, anchor) : picker.appendChild(tabsEl);
 
-    // Rewrite images already present when tabs are built
     rewriteAll(picker);
   }
 
   function attachImageObserver(picker) {
-    if (pickerImageObserver) pickerImageObserver.disconnect();
+    if (imageObserver) imageObserver.disconnect();
 
-    pickerImageObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== 1) continue;
-          if (node.tagName === "IMG") {
-            rewriteSrc(node);
-          } else {
-            node.querySelectorAll &&
-              node.querySelectorAll("img.emoji[src], img[src*='emoji.rdfzer.com']")
-                  .forEach(rewriteSrc);
+    imageObserver = new MutationObserver((mutations) => {
+      for (const { type, addedNodes, target, attributeName } of mutations) {
+        if (type === "childList") {
+          for (const node of addedNodes) {
+            if (node.nodeType !== 1) continue;
+            if (node.tagName === "IMG") {
+              rewriteImg(node);
+            } else {
+              node.querySelectorAll?.(
+                "img.emoji, img[src*='/emoji/'], img[src*='emoji.rdfzer.com']"
+              ).forEach(rewriteImg);
+            }
           }
         }
-        // Also handle src attribute changes (lazy loading)
-        if (
-          mutation.type === "attributes" &&
-          mutation.attributeName === "src" &&
-          mutation.target.tagName === "IMG"
-        ) {
-          rewriteSrc(mutation.target);
+        if (type === "attributes" && attributeName === "src" && target.tagName === "IMG") {
+          rewriteImg(target);
         }
       }
     });
 
-    pickerImageObserver.observe(picker, {
+    imageObserver.observe(picker, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -131,32 +147,24 @@ export default apiInitializer("1.0", (api) => {
   }
 
   function initPicker(picker) {
-    // Delay slightly to let Discourse render its own emoji first
     setTimeout(() => {
       buildTabs(picker);
       attachImageObserver(picker);
-    }, 80);
+    }, 100);
   }
 
-  // ─── Watch for picker appearing in DOM ───────────────────────────────────
+  // ── Watch for picker mount ───────────────────────────────────────────────
 
-  const bodyObserver = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
+  new MutationObserver((mutations) => {
+    for (const { addedNodes } of mutations) {
+      for (const node of addedNodes) {
         if (node.nodeType !== 1) continue;
-
-        const picker =
-          node.matches(".emoji-picker, .emoji-picker-modal")
-            ? node
-            : node.querySelector(".emoji-picker, .emoji-picker-modal");
-
+        const picker = findPicker(node);
         if (picker) {
           initPicker(picker);
           return;
         }
       }
     }
-  });
-
-  bodyObserver.observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body, { childList: true, subtree: true });
 });
