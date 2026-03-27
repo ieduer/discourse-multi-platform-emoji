@@ -6,11 +6,16 @@ const R2_BASE = "https://emoji.rdfzer.com";
 const PLATFORM_META = {
   apple:             { label: "Apple" },
   google:            { label: "Google" },
+  noto:              { label: "Noto" },
   twitter:           { label: "Twitter/X" },
+  twemoji:           { label: "Twemoji" },
   win10:             { label: "Windows" },
   facebook_messenger:{ label: "Facebook" },
   emoji_one:         { label: "EmojiOne" },
   google_classic:    { label: "Google (old)" },
+  fluentui:          { label: "Fluent UI" },
+  openmoji:          { label: "OpenMoji" },
+  unicode:           { label: "Unicode" },
 };
 
 // Extracts the bare filename (e.g. "grinning.png") from any emoji URL.
