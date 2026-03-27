@@ -1,5 +1,6 @@
-// Multi-Platform Emoji Tabs for Discourse Emoji Picker
-// =====================================================
+// Multi-Platform Emoji — Platform Switcher Tabs
+// Loaded from R2 (emoji.rdfzer.com), no server uploads required.
+// ============================================================
 
 .platform-emoji-tabs {
   display: flex;
@@ -13,16 +14,16 @@
   .platform-tab {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
     padding: 4px 10px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
     color: var(--primary-medium);
     font-size: 0.8em;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
     white-space: nowrap;
+    line-height: 1.4;
 
     &:hover {
       background: var(--primary-very-low);
@@ -32,34 +33,14 @@
     &.active {
       background: var(--tertiary-low);
       color: var(--tertiary);
+      border-color: var(--tertiary-medium);
       font-weight: 600;
-    }
-
-    .platform-icon {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      background-size: contain;
-      background-repeat: no-repeat;
-      background-position: center;
-    }
-
-    // Platform-specific icon colors via pseudo-elements
-    .platform-icon-all::before { content: "🌐"; font-size: 14px; }
-    .platform-icon-twemoji::before { content: "🐦"; font-size: 14px; }
-    .platform-icon-noto::before { content: "🔤"; font-size: 14px; }
-    .platform-icon-fluent::before { content: "🪟"; font-size: 14px; }
-    .platform-icon-openmoji::before { content: "🎨"; font-size: 14px; }
-    .platform-icon-custom::before { content: "⭐"; font-size: 14px; }
-
-    .platform-label {
-      line-height: 1;
     }
   }
 }
 
-// Smooth transition for filtered emoji
-.emoji-picker-category-custom img.emoji,
-.section[data-section="custom"] img.emoji {
-  transition: opacity 0.15s ease;
+// Smooth src swap transition
+.emoji-picker img.emoji,
+.emoji-picker-modal img.emoji {
+  transition: opacity 0.1s ease;
 }
