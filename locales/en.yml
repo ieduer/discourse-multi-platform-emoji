@@ -3,6 +3,7 @@ en:
     description: "Adds multi-platform emoji support to Discourse. Upload emoji from Twemoji, Noto, Fluent, and OpenMoji as custom emoji, then use this component to organize them by platform in the emoji picker."
     settings:
       multi_platform_emoji_enabled: "Enable the multi-platform emoji filter tabs"
+      emoji_asset_origin: "Your HTTPS emoji asset origin; blank disables remote emoji rewriting"
       emoji_platforms_enabled: "Which platforms to show tabs for (pipe-separated list)"
       show_platform_prefix: "Show platform name in emoji tooltip on hover"
       platform_tab_style: "Tab display style: icons, text, or both"

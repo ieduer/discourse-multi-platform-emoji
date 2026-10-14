@@ -4,6 +4,12 @@ multi_platform_emoji_enabled:
   description:
     en: "Enable multi-platform emoji tabs in the emoji picker"
 
+emoji_asset_origin:
+  type: string
+  default: ""
+  description:
+    en: "HTTPS origin of your emoji asset service, without a path (for example https://emoji.example.com). Blank or invalid means no rewriting or platform tabs. There is no built-in asset service."
+
 emoji_platforms_enabled:
   type: list
   default: "apple|google|noto|twitter|twemoji|win10|facebook_messenger|emoji_one|google_classic|fluentui|openmoji|unicode"

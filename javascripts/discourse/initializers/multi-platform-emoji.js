@@ -1,7 +1,18 @@
 import { apiInitializer } from "discourse/lib/api";
 import { later } from "@ember/runloop";
 
-const R2_BASE = "https://emoji.rdfzer.com";
+function getEmojiAssetOrigin(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!/^https:\/\/[^/]/i.test(text) || /[\\\s]/u.test(text)) return "";
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "https:" || url.username || url.password ||
+        url.pathname !== "/" || url.search || url.hash) return "";
+    return url.origin;
+  } catch {
+    return "";
+  }
+}
 
 const PLATFORM_META = {
   apple:             { label: "Apple" },
@@ -19,10 +30,8 @@ const PLATFORM_META = {
 };
 
 // Extracts bare filename ("grinning.png") from any emoji URL.
-const EMOJI_FILENAME_RE = /\/([^/?#]+\.(?:png|gif|svg))(?:[?#].*)?$/i;
+const EMOJI_FILENAME_RE = /\/([A-Za-z0-9_+.-]{1,128}\.(?:png|gif|svg))$/i;
 
-// Matches emoji images from Discourse or R2.
-const EMOJI_IMG_SEL = "img.emoji, img[src*='/emoji/'], img[src*='emoji.rdfzer.com']";
 
 // Known picker selectors across Discourse versions.
 const PICKER_SELECTORS = [
@@ -36,11 +45,16 @@ const PICKER_SELECTORS = [
 ].join(", ");
 
 export default apiInitializer("1.0", (api) => {
-  const siteSettings = api.container.lookup("service:site-settings");
-  if (!siteSettings.multi_platform_emoji_enabled) return;
+  // Theme settings are authoritative, including explicit blank values. Keep
+  // the existing site-settings path only for installations without theme settings.
+  const componentSettings = typeof settings === "object" && settings
+    ? settings
+    : api.container.lookup("service:site-settings");
+  const assetOrigin = getEmojiAssetOrigin(componentSettings.emoji_asset_origin);
+  if (!componentSettings.multi_platform_emoji_enabled || !assetOrigin) return;
 
-  const enabledPlatforms = (siteSettings.emoji_platforms_enabled || "apple|google|twitter")
-    .split("|").map((s) => s.trim()).filter((s) => s && PLATFORM_META[s]);
+  const enabledPlatforms = (componentSettings.emoji_platforms_enabled || "apple|google|twitter")
+    .split("|").map((s) => s.trim()).filter((s) => s && Object.hasOwn(PLATFORM_META, s));
 
   if (enabledPlatforms.length === 0) return;
 
@@ -50,23 +64,32 @@ export default apiInitializer("1.0", (api) => {
   // ── URL helpers ────────────────────────────────────────────────────────
 
   function isEmojiImg(img) {
-    return img.src && (
-      img.classList.contains("emoji") ||
-      img.src.includes("/emoji/") ||
-      img.src.includes("emoji.rdfzer.com")
-    );
+    try {
+      const url = new URL(img.src);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+      const platform = url.pathname.split("/")[1];
+      return img.classList.contains("emoji") || url.pathname.includes("/emoji/") ||
+        (url.origin === assetOrigin && Object.hasOwn(PLATFORM_META, platform) &&
+          url.pathname.split("/").length === 3);
+    } catch {
+      return false;
+    }
+  }
+
+  function emojiImages(root) {
+    return Array.from(root.querySelectorAll?.("img") || []).filter(isEmojiImg);
   }
 
   function rewriteImg(img) {
     if (!isEmojiImg(img)) return;
-    const m = img.src.match(EMOJI_FILENAME_RE);
+    const m = new URL(img.src).pathname.match(EMOJI_FILENAME_RE);
     if (!m) return;
-    const target = `${R2_BASE}/${activePlatform}/${m[1]}`;
+    const target = `${assetOrigin}/${activePlatform}/${m[1]}`;
     if (img.src !== target) img.src = target;
   }
 
   function rewriteAll(root) {
-    (root || document.body).querySelectorAll(EMOJI_IMG_SEL).forEach(rewriteImg);
+    emojiImages(root || document.body).forEach(rewriteImg);
   }
 
   // ── Global image observer (works regardless of picker detection) ────────
@@ -156,7 +179,7 @@ export default apiInitializer("1.0", (api) => {
       ].join(", ")
     );
     for (const el of candidates) {
-      const imgs = el.querySelectorAll(EMOJI_IMG_SEL);
+      const imgs = emojiImages(el);
       if (imgs.length >= 3) return el;
     }
     return null;
@@ -177,7 +200,7 @@ export default apiInitializer("1.0", (api) => {
       }
     } catch (_) {}
     // Content heuristic: 3+ emoji images → treat as picker
-    const imgs = el.querySelectorAll?.(EMOJI_IMG_SEL) || [];
+    const imgs = emojiImages(el);
     if (imgs.length >= 3) {
       later(() => buildTabs(el), 150);
       return true;

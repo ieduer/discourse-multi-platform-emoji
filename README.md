@@ -61,7 +61,7 @@ bash upload_to_r2.sh ./r2_tree discourse-emoji-assets
 
 1. Set up R2 bucket public access (custom domain or R2.dev)
 2. In Discourse Admin → Settings → Emoji:
-   - Set **External emoji URL** to your R2 public URL (e.g., `https://emoji.rdfzer.com`)
+   - Set **External emoji URL** to your R2 public URL (e.g., `https://emoji.example.com`)
    - Select any **Emoji set** from the dropdown — all sets now load from R2
 
 ### Step 4: Install Theme Component (optional)
@@ -71,7 +71,8 @@ For platform filter tabs in the emoji picker:
 1. Go to **Admin → Customize → Themes → Components**
 2. Click **Install** → **From a git repository**
 3. Enter: `https://github.com/ieduer/discourse-multi-platform-emoji`
-4. Add the component to your active theme
+4. Set the component's `emoji_asset_origin` to your own HTTPS asset origin (for example `https://emoji.example.com`). Use an origin with no path, credentials, query or fragment. Host files at `/<platform>/<filename>`.
+5. Add the component to your active theme. Without a valid asset origin, the component leaves emoji images unchanged and installs no observer, picker hooks or polling. There is no built-in or fallback asset service.
 
 ## Quick Start (Approach B — Custom Emoji API)
 
@@ -121,9 +122,29 @@ Aliases: `twitter` → `twemoji`, `google` → `noto`, `google_classic` → `not
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `multi_platform_emoji_enabled` | true | Enable platform filter tabs |
+| `emoji_asset_origin` | empty | Your HTTPS asset origin; blank or invalid disables rewriting and tabs |
 | `emoji_platforms_enabled` | twemoji\|noto\|fluent\|openmoji | Pipe-separated enabled platforms |
 | `show_platform_prefix` | false | Show platform name in tooltip |
 | `platform_tab_style` | icons | Tab style: icons, text, or both |
+
+## Upgrade and verification
+
+Existing installations must explicitly set `emoji_asset_origin` to the asset origin
+they intend to use before updating. Record the previous component commit and the
+current Discourse **External emoji URL** separately; that core setting is not changed
+by this component. An administrator already using their own hosted assets can keep
+the same origin. Do not copy another installation's endpoint.
+
+Run `node --test test/*.test.mjs`, JavaScript syntax checking and YAML/JSON validation
+before release. After a separately approved update, verify blank/missing/invalid
+origins leave original emoji images untouched, then verify your configured origin
+and both platform tabs. The asset server must serve files directly; image redirects
+are controlled by that server. Browser tests do not establish a server resource budget.
+
+Containment: clear `emoji_asset_origin` or disable `multi_platform_emoji_enabled`.
+Rollback must preserve later accepted changes; older versions restore hard-coded
+remote rewriting, so disable the component before reverting to them. No deployment
+or core site setting change is part of this source repair.
 
 ## License
 
